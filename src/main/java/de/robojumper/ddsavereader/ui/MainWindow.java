@@ -81,6 +81,7 @@ public class MainWindow {
     private SearchDialog searchDialog;
     private AdvancedSearchDialog advancedSearchDialog;
     private BookmarkManager bookmarkManager;
+    private QuickEditDialog quickEditDialog;
 
     /**
      * Launch the application.
@@ -193,6 +194,13 @@ public class MainWindow {
         mntmShowBookmarks.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, KeyEvent.CTRL_DOWN_MASK));
         mntmShowBookmarks.addActionListener(e -> showBookmarkManager());
         mnEdit.add(mntmShowBookmarks);
+
+        mnEdit.addSeparator();
+
+        JMenuItem mntmQuickEdit = new JMenuItem("Quick Edit Presets...");
+        mntmQuickEdit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, KeyEvent.CTRL_DOWN_MASK));
+        mntmQuickEdit.addActionListener(e -> showQuickEditDialog());
+        mnEdit.add(mntmQuickEdit);
 
         JMenu mnTools = new JMenu("Tools");
         menuBar.add(mnTools);
@@ -482,6 +490,15 @@ public class MainWindow {
             // Navigate to the specified file and position
             navigateToBookmark(fileName, lineNumber, caretPosition);
         });
+
+        // Initialize quick edit dialog
+        quickEditDialog = new QuickEditDialog(frame);
+        quickEditDialog.setCallback((fileName, newText) -> {
+            // Text was modified by quick edit, update the state
+            // The text area is already updated, but we need to notify the state
+            state.changeFile(fileName, newText);
+            updateSaveStatus();
+        });
     }
 
     private void showSearchDialog() {
@@ -540,6 +557,20 @@ public class MainWindow {
             bookmarkManager.setCurrentContext(currentTab.area, currentTab.fileName);
         }
         bookmarkManager.showDialog();
+    }
+
+    private void showQuickEditDialog() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            quickEditDialog.setCurrentContext(currentTab.area, currentTab.fileName);
+            quickEditDialog.showDialog();
+        } else {
+            JOptionPane.showMessageDialog(frame,
+                "Please open a file first",
+                "No File Open",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private void navigateToBookmark(String fileName, int lineNumber, int caretPosition) {
