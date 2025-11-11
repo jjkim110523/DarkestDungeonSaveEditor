@@ -236,8 +236,8 @@ Special thanks to the Darkest Dungeon community for feedback on quirk classifica
 
 ## 🔗 Links
 
-- **GitHub Repository**: https://github.com/robojumper/DarkestDungeonSaveEditor
-- **Original Author**: robojumper
+- **GitHub Repository**: https://github.com/jjkim110523/DarkestDungeonSaveEditor
+- **Forked from**: https://github.com/robojumper/DarkestDungeonSaveEditor (Original Author: robojumper)
 - **License**: See LICENSE file
 
 ---
