@@ -45,8 +45,9 @@ public class QuickEditDialog extends JDialog {
     private Gson gson;
 
     private JCheckBox chkResetStress;
-    private JCheckBox chkRemoveQuirks;
-    private JCheckBox chkRemoveLockedQuirks;
+    private JCheckBox chkRemoveNegativeQuirks;
+    private JCheckBox chkRemoveAllUnlocked;
+    private JCheckBox chkRemoveAllQuirks;
     private JCheckBox chkHealHeroes;
     private JCheckBox chkMaxGold;
     private JCheckBox chkMaxHeirlooms;
@@ -99,14 +100,24 @@ public class QuickEditDialog extends JDialog {
         optionsPanel.add(chkResetStress, gbc);
 
         gbc.gridy++;
-        chkRemoveQuirks = new JCheckBox("Remove all negative quirks (keep locked)");
-        chkRemoveQuirks.setToolTipText("Removes all unlocked quirks from all heroes");
-        optionsPanel.add(chkRemoveQuirks, gbc);
+        chkRemoveNegativeQuirks = new JCheckBox("Remove ONLY negative quirks (safe)");
+        chkRemoveNegativeQuirks.setToolTipText("<html>Removes only known negative quirks (diseases, phobias, etc.)<br>" +
+                "Positive quirks are preserved regardless of lock status<br>" +
+                "Database: " + QuirkLibrary.getNegativeQuirkCount() + " known negative quirks</html>");
+        optionsPanel.add(chkRemoveNegativeQuirks, gbc);
 
         gbc.gridy++;
-        chkRemoveLockedQuirks = new JCheckBox("Remove ALL quirks (including locked)");
-        chkRemoveLockedQuirks.setToolTipText("WARNING: Removes ALL quirks, even locked positive ones");
-        optionsPanel.add(chkRemoveLockedQuirks, gbc);
+        chkRemoveAllUnlocked = new JCheckBox("Remove all unlocked quirks (⚠️ risky)");
+        chkRemoveAllUnlocked.setToolTipText("<html>Removes ALL unlocked quirks (both positive and negative)<br>" +
+                "Locked positive quirks will be preserved<br>" +
+                "WARNING: Unlocked positive quirks will also be removed!</html>");
+        optionsPanel.add(chkRemoveAllUnlocked, gbc);
+
+        gbc.gridy++;
+        chkRemoveAllQuirks = new JCheckBox("Remove ALL quirks including locked (⚠️⚠️ dangerous)");
+        chkRemoveAllQuirks.setToolTipText("<html>Removes EVERY quirk regardless of type or lock status<br>" +
+                "WARNING: All positive quirks will also be removed, even if locked!</html>");
+        optionsPanel.add(chkRemoveAllQuirks, gbc);
 
         gbc.gridy++;
         chkHealHeroes = new JCheckBox("Heal all heroes to max HP");
@@ -185,8 +196,9 @@ public class QuickEditDialog extends JDialog {
 
         // Check if any option is selected
         if (!chkResetStress.isSelected() &&
-            !chkRemoveQuirks.isSelected() &&
-            !chkRemoveLockedQuirks.isSelected() &&
+            !chkRemoveNegativeQuirks.isSelected() &&
+            !chkRemoveAllUnlocked.isSelected() &&
+            !chkRemoveAllQuirks.isSelected() &&
             !chkHealHeroes.isSelected() &&
             !chkMaxGold.isSelected() &&
             !chkMaxHeirlooms.isSelected()) {
@@ -287,21 +299,25 @@ public class QuickEditDialog extends JDialog {
                 }
             }
 
-            // Remove quirks
-            if (chkRemoveQuirks.isSelected() || chkRemoveLockedQuirks.isSelected()) {
+            // Remove quirks (three different modes)
+            if (chkRemoveNegativeQuirks.isSelected() ||
+                chkRemoveAllUnlocked.isSelected() ||
+                chkRemoveAllQuirks.isSelected()) {
+
                 if (hero.has("quirks")) {
                     JsonElement quirksElement = hero.get("quirks");
                     if (quirksElement.isJsonObject()) {
                         JsonObject quirks = quirksElement.getAsJsonObject();
                         int quirkCount = quirks.size();
 
-                        if (chkRemoveLockedQuirks.isSelected()) {
-                            // Remove ALL quirks
+                        if (chkRemoveAllQuirks.isSelected()) {
+                            // Mode 3: Remove ALL quirks (most dangerous)
                             quirks.entrySet().clear();
                             changes += quirkCount;
-                            log("  - Removed all " + quirkCount + " quirks (including locked)");
-                        } else {
-                            // Remove only unlocked quirks
+                            log("  - Removed ALL " + quirkCount + " quirks (including locked positive ones)");
+
+                        } else if (chkRemoveAllUnlocked.isSelected()) {
+                            // Mode 2: Remove all unlocked quirks (risky)
                             int removed = 0;
                             java.util.Iterator<java.util.Map.Entry<String, JsonElement>> iterator =
                                 quirks.entrySet().iterator();
@@ -310,14 +326,11 @@ public class QuickEditDialog extends JDialog {
                                 JsonElement quirkData = entry.getValue();
                                 if (quirkData.isJsonObject()) {
                                     JsonObject quirkObj = quirkData.getAsJsonObject();
+                                    boolean isLocked = false;
                                     if (quirkObj.has("is_locked")) {
-                                        boolean isLocked = quirkObj.get("is_locked").getAsBoolean();
-                                        if (!isLocked) {
-                                            iterator.remove();
-                                            removed++;
-                                        }
-                                    } else {
-                                        // No is_locked field, remove it
+                                        isLocked = quirkObj.get("is_locked").getAsBoolean();
+                                    }
+                                    if (!isLocked) {
                                         iterator.remove();
                                         removed++;
                                     }
@@ -325,6 +338,28 @@ public class QuickEditDialog extends JDialog {
                             }
                             changes += removed;
                             log("  - Removed " + removed + " unlocked quirks (kept " + (quirkCount - removed) + " locked)");
+
+                        } else if (chkRemoveNegativeQuirks.isSelected()) {
+                            // Mode 1: Remove ONLY negative quirks (safest)
+                            int removed = 0;
+                            int positiveKept = 0;
+                            java.util.Iterator<java.util.Map.Entry<String, JsonElement>> iterator =
+                                quirks.entrySet().iterator();
+                            while (iterator.hasNext()) {
+                                java.util.Map.Entry<String, JsonElement> entry = iterator.next();
+                                String quirkName = entry.getKey();
+
+                                // Check if this is a negative quirk using our database
+                                if (QuirkLibrary.isNegativeQuirk(quirkName)) {
+                                    iterator.remove();
+                                    removed++;
+                                } else {
+                                    // Keep all non-negative quirks (positive or unknown)
+                                    positiveKept++;
+                                }
+                            }
+                            changes += removed;
+                            log("  - Removed " + removed + " negative quirks, kept " + positiveKept + " positive/unknown quirks");
                         }
                     }
                 }
