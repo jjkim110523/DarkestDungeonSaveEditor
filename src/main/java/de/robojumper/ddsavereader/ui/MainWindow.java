@@ -77,6 +77,12 @@ public class MainWindow {
 
     private State state = new State();
 
+    // Search and bookmark components
+    private SearchDialog searchDialog;
+    private AdvancedSearchDialog advancedSearchDialog;
+    private BookmarkManager bookmarkManager;
+    private QuickEditDialog quickEditDialog;
+
     /**
      * Launch the application.
      */
@@ -163,6 +169,38 @@ public class MainWindow {
         });
         fileMenu.add(mntmOpenBackupDirectory);
         fileMenu.add(mntmExit);
+
+        JMenu mnEdit = new JMenu("Edit");
+        menuBar.add(mnEdit);
+
+        JMenuItem mntmFind = new JMenuItem("Find...");
+        mntmFind.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK));
+        mntmFind.addActionListener(e -> showSearchDialog());
+        mnEdit.add(mntmFind);
+
+        JMenuItem mntmAdvancedSearch = new JMenuItem("Advanced Search...");
+        mntmAdvancedSearch.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK));
+        mntmAdvancedSearch.addActionListener(e -> showAdvancedSearchDialog());
+        mnEdit.add(mntmAdvancedSearch);
+
+        mnEdit.addSeparator();
+
+        JMenuItem mntmAddBookmark = new JMenuItem("Add Bookmark");
+        mntmAddBookmark.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, KeyEvent.CTRL_DOWN_MASK));
+        mntmAddBookmark.addActionListener(e -> addBookmark());
+        mnEdit.add(mntmAddBookmark);
+
+        JMenuItem mntmShowBookmarks = new JMenuItem("Show Bookmarks");
+        mntmShowBookmarks.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, KeyEvent.CTRL_DOWN_MASK));
+        mntmShowBookmarks.addActionListener(e -> showBookmarkManager());
+        mnEdit.add(mntmShowBookmarks);
+
+        mnEdit.addSeparator();
+
+        JMenuItem mntmQuickEdit = new JMenuItem("Quick Edit Presets...");
+        mntmQuickEdit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, KeyEvent.CTRL_DOWN_MASK));
+        mntmQuickEdit.addActionListener(e -> showQuickEditDialog());
+        mnEdit.add(mntmQuickEdit);
 
         JMenu mnTools = new JMenu("Tools");
         menuBar.add(mnTools);
@@ -434,6 +472,139 @@ public class MainWindow {
             }
         });
         buttonPanel.add(reloadButton);
+
+        // Initialize search and bookmark components
+        initializeSearchAndBookmarks();
+    }
+
+    private void initializeSearchAndBookmarks() {
+        // Initialize search dialog
+        searchDialog = new SearchDialog(frame);
+
+        // Initialize advanced search dialog
+        advancedSearchDialog = new AdvancedSearchDialog(frame);
+
+        // Initialize bookmark manager
+        bookmarkManager = new BookmarkManager(frame);
+        bookmarkManager.setNavigationCallback((fileName, lineNumber, caretPosition) -> {
+            // Navigate to the specified file and position
+            navigateToBookmark(fileName, lineNumber, caretPosition);
+        });
+
+        // Initialize quick edit dialog
+        quickEditDialog = new QuickEditDialog(frame);
+        quickEditDialog.setCallback((fileName, newText) -> {
+            // Text was modified by quick edit, update the state
+            // The text area is already updated, but we need to notify the state
+            state.changeFile(fileName, newText);
+            updateSaveStatus();
+        });
+    }
+
+    private void showSearchDialog() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            searchDialog.setTextArea(currentTab.area);
+
+            // If there's selected text, use it as the search term
+            String selectedText = currentTab.area.getSelectedText();
+            if (selectedText != null && !selectedText.isEmpty()) {
+                searchDialog.setSearchText(selectedText);
+            }
+
+            searchDialog.showDialog();
+        } else {
+            JOptionPane.showMessageDialog(frame,
+                "Please open a file first",
+                "No File Open",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void showAdvancedSearchDialog() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            advancedSearchDialog.setTextArea(currentTab.area);
+            advancedSearchDialog.showDialog();
+        } else {
+            JOptionPane.showMessageDialog(frame,
+                "Please open a file first",
+                "No File Open",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void addBookmark() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            bookmarkManager.setCurrentContext(currentTab.area, currentTab.fileName);
+            bookmarkManager.addBookmarkFromCurrent();
+        } else {
+            JOptionPane.showMessageDialog(frame,
+                "Please open a file first",
+                "No File Open",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void showBookmarkManager() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            bookmarkManager.setCurrentContext(currentTab.area, currentTab.fileName);
+        }
+        bookmarkManager.showDialog();
+    }
+
+    private void showQuickEditDialog() {
+        Component tab = tabbedPane.getSelectedComponent();
+        if (tab != null) {
+            Tab currentTab = (Tab) tab;
+            quickEditDialog.setCurrentContext(currentTab.area, currentTab.fileName);
+            quickEditDialog.showDialog();
+        } else {
+            JOptionPane.showMessageDialog(frame,
+                "Please open a file first",
+                "No File Open",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void navigateToBookmark(String fileName, int lineNumber, int caretPosition) {
+        // Find the tab with the specified file name
+        int totalTabs = tabbedPane.getTabCount();
+        for (int i = 0; i < totalTabs; i++) {
+            Tab tab = (Tab) tabbedPane.getComponentAt(i);
+            if (tab.fileName.equals(fileName)) {
+                // Switch to this tab
+                tabbedPane.setSelectedIndex(i);
+
+                // Navigate to the position
+                try {
+                    tab.area.setCaretPosition(caretPosition);
+                    tab.area.requestFocusInWindow();
+
+                    // Optionally, scroll to make the line visible
+                    int line = lineNumber - 1; // Convert to 0-based
+                    if (line >= 0 && line < tab.area.getLineCount()) {
+                        int offset = tab.area.getLineStartOffset(line);
+                        tab.area.setCaretPosition(offset);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return;
+            }
+        }
+
+        // File not found in tabs
+        JOptionPane.showMessageDialog(frame,
+            "File '" + fileName + "' is not currently open",
+            "File Not Found",
+            JOptionPane.WARNING_MESSAGE);
     }
 
     protected static final void directoryChooser(String def, Consumer<String> onSuccess) {
